@@ -390,9 +390,9 @@ Este projeto está sob a licença MIT. Veja o arquivo [LICENSE](LICENSE) para de
 ## 📞 **Contato**
 
 **Gabriel Gimenez** - Desenvolvedor Full Stack  
-- 🌐 Portfolio: [seu-portfolio.com]
-- 💼 LinkedIn: [linkedin.com/in/seu-perfil]
-- 📧 Email: [seu-email@exemplo.com]
+- 🌐 Portfolio: www.gabrielgimenez.site
+- 💼 LinkedIn: https://www.linkedin.com/in/gabriel-gimenez/
+- 📧 Email: gimenezrp645@gmail.com
 
 ---
 
