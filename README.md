@@ -76,11 +76,6 @@ kubectl get pods -n fastapi-menu-api-prod
 - **Monitoring**: https://grafana.meuprojeto.dev
 - **Metrics**: https://prometheus.meuprojeto.dev
 
-### 🔐 **Credenciais de Produção**
-- **Admin**: `admin@meuprojeto.dev` / `SecureAdminPass2024!`
-- **Database**: `postgres` / `PostgresSecure2024Enterprise!`
-
-> ⚠️ **IMPORTANTE**: Altere as credenciais antes do deploy real!
 
 ## 🏗️ Arquitetura Enterprise
 
