@@ -1,0 +1,27 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+- namespace.yaml
+- secrets.yaml
+- configmap.yaml
+- postgres.yaml
+- redis.yaml
+- fastapi.yaml
+- prometheus.yaml
+- grafana.yaml
+- ingress.yaml
+- backup.yaml
+
+commonLabels:
+  app.kubernetes.io/name: fastapi-menu-api
+  app.kubernetes.io/version: "v1.0.0"
+  app.kubernetes.io/component: api
+  app.kubernetes.io/part-of: menu-api-system
+
+namePrefix: ""
+nameSuffix: ""
+
+images:
+- name: fastapi-menu-api
+  newTag: latest

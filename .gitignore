@@ -1,0 +1,74 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+ENV/
+.env
+.venv
+*.egg-info/
+dist/
+build/
+*.wheel
+
+# FastAPI specific
+.pytest_cache/
+htmlcov/
+.coverage
+.tox/
+
+# Database
+*.db
+*.sqlite3
+sql_app.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Environment variables
+.env.local
+.env.production
+.env.staging
+
+# Virtual environments
+venv/
+env/
+ENV/
+.venv/
+
+# Jupyter Notebooks
+.ipynb_checkpoints
+
+# MyPy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Coverage reports
+htmlcov/
+.coverage
+.coverage.*
+coverage.xml
+
+# Testing
+.pytest_cache/
+.cache
+nosetests.xml
+
+# Documentation
+docs/_build/

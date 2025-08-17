@@ -1,0 +1,66 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+- ../../base
+
+namespace: fastapi-menu-api-staging
+
+namePrefix: staging-
+nameSuffix: ""
+
+commonLabels:
+  environment: staging
+
+patches:
+- target:
+    kind: Deployment
+    name: fastapi-menu-api
+  patch: |-
+    - op: replace
+      path: /spec/replicas
+      value: 2
+
+- target:
+    kind: ConfigMap
+    name: app-config
+  patch: |-
+    - op: replace
+      path: /data/DEBUG
+      value: "false"
+    - op: replace
+      path: /data/ENVIRONMENT
+      value: "staging"
+    - op: replace
+      path: /data/LOG_LEVEL
+      value: "INFO"
+    - op: replace
+      path: /data/CORS_ORIGINS
+      value: "https://staging.meuprojeto.dev,https://staging-api.meuprojeto.dev"
+
+- target:
+    kind: Ingress
+    name: fastapi-menu-api-ingress
+  patch: |-
+    - op: replace
+      path: /spec/rules/0/host
+      value: "staging-api.meuprojeto.dev"
+    - op: replace
+      path: /spec/rules/1/host
+      value: "staging-grafana.meuprojeto.dev"
+    - op: replace
+      path: /spec/rules/2/host
+      value: "staging-prometheus.meuprojeto.dev"
+    - op: replace
+      path: /spec/tls/0/hosts
+      value: 
+        - "staging-api.meuprojeto.dev"
+        - "staging-grafana.meuprojeto.dev"
+        - "staging-prometheus.meuprojeto.dev"
+    - op: replace
+      path: /metadata/annotations/cert-manager.io~1cluster-issuer
+      value: "letsencrypt-staging"
+
+images:
+- name: fastapi-menu-api
+  newTag: staging

@@ -1,0 +1,39 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: fastapi-menu-api
+  labels:
+    name: fastapi-menu-api
+    environment: "{{ .Environment }}"
+    app: menu-api
+    version: "v1"
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: fastapi-menu-api-dev
+  labels:
+    name: fastapi-menu-api-dev
+    environment: dev
+    app: menu-api
+    version: "v1"
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: fastapi-menu-api-staging
+  labels:
+    name: fastapi-menu-api-staging
+    environment: staging
+    app: menu-api
+    version: "v1"
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: fastapi-menu-api-prod
+  labels:
+    name: fastapi-menu-api-prod
+    environment: prod
+    app: menu-api
+    version: "v1"

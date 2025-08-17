@@ -1,0 +1,54 @@
+[flake8]
+# Maximum line length
+max-line-length = 88
+
+# Select errors and warnings
+select = E,W,F,C
+
+# Ignore specific errors
+ignore = 
+    # E203: whitespace before ':' (conflicts with black)
+    E203,
+    # W503: line break before binary operator (conflicts with black)
+    W503,
+    # F401: module imported but unused (handled by autoflake)
+    # F841: local variable assigned but never used
+    # E501: line too long (handled by black)
+    E501
+
+# Exclude directories
+exclude = 
+    .git,
+    __pycache__,
+    .venv,
+    venv,
+    env,
+    .env,
+    .tox,
+    .eggs,
+    *.egg,
+    build,
+    dist,
+    .mypy_cache,
+    .pytest_cache,
+    htmlcov,
+    migrations
+
+# Set complexity threshold
+max-complexity = 10
+
+# Docstring conventions
+docstring-convention = google
+
+# Import order (if using flake8-import-order)
+import-order-style = google
+
+# Per-file ignores
+per-file-ignores =
+    # Tests can have longer lines and unused imports
+    tests/*:E501,F401,F841
+    # __init__.py files can have unused imports
+    __init__.py:F401
+    # Settings files can have longer lines
+    */settings.py:E501
+    */config.py:E501

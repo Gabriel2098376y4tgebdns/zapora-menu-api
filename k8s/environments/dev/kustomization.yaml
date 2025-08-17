@@ -1,0 +1,72 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+- ../../base
+
+namespace: fastapi-menu-api-dev
+
+namePrefix: dev-
+nameSuffix: ""
+
+commonLabels:
+  environment: dev
+
+patches:
+- target:
+    kind: Deployment
+    name: fastapi-menu-api
+  patch: |-
+    - op: replace
+      path: /spec/replicas
+      value: 1
+    - op: replace
+      path: /spec/template/spec/containers/0/resources/requests/memory
+      value: "128Mi"
+    - op: replace
+      path: /spec/template/spec/containers/0/resources/limits/memory
+      value: "256Mi"
+
+- target:
+    kind: ConfigMap
+    name: app-config
+  patch: |-
+    - op: replace
+      path: /data/DEBUG
+      value: "true"
+    - op: replace
+      path: /data/ENVIRONMENT
+      value: "development"
+    - op: replace
+      path: /data/LOG_LEVEL
+      value: "DEBUG"
+    - op: replace
+      path: /data/CORS_ORIGINS
+      value: "http://localhost:3000,http://localhost:8080,https://dev.meuprojeto.dev"
+
+- target:
+    kind: Ingress
+    name: fastapi-menu-api-ingress
+  patch: |-
+    - op: replace
+      path: /spec/rules/0/host
+      value: "dev-api.meuprojeto.dev"
+    - op: replace
+      path: /spec/rules/1/host
+      value: "dev-grafana.meuprojeto.dev"
+    - op: replace
+      path: /spec/rules/2/host
+      value: "dev-prometheus.meuprojeto.dev"
+    - op: replace
+      path: /spec/tls/0/hosts
+      value: 
+        - "dev-api.meuprojeto.dev"
+        - "dev-grafana.meuprojeto.dev"
+        - "dev-prometheus.meuprojeto.dev"
+    - op: replace
+      path: /metadata/annotations/cert-manager.io~1cluster-issuer
+      value: "letsencrypt-staging"
+
+images:
+- name: fastapi-menu-api
+  newTag: dev

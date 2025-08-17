@@ -1,0 +1,114 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+- ../../base
+
+namespace: fastapi-menu-api-prod
+
+namePrefix: prod-
+nameSuffix: ""
+
+commonLabels:
+  environment: prod
+
+patches:
+- target:
+    kind: Deployment
+    name: fastapi-menu-api
+  patch: |-
+    - op: replace
+      path: /spec/replicas
+      value: 5
+    - op: replace
+      path: /spec/template/spec/containers/0/resources/requests/memory
+      value: "512Mi"
+    - op: replace
+      path: /spec/template/spec/containers/0/resources/limits/memory
+      value: "1Gi"
+    - op: replace
+      path: /spec/template/spec/containers/0/resources/requests/cpu
+      value: "500m"
+    - op: replace
+      path: /spec/template/spec/containers/0/resources/limits/cpu
+      value: "1000m"
+
+- target:
+    kind: StatefulSet
+    name: postgres
+  patch: |-
+    - op: replace
+      path: /spec/template/spec/containers/0/resources/requests/memory
+      value: "512Mi"
+    - op: replace
+      path: /spec/template/spec/containers/0/resources/limits/memory
+      value: "1Gi"
+    - op: replace
+      path: /spec/template/spec/containers/0/resources/requests/cpu
+      value: "500m"
+    - op: replace
+      path: /spec/template/spec/containers/0/resources/limits/cpu
+      value: "1000m"
+
+- target:
+    kind: ConfigMap
+    name: app-config
+  patch: |-
+    - op: replace
+      path: /data/DEBUG
+      value: "false"
+    - op: replace
+      path: /data/ENVIRONMENT
+      value: "production"
+    - op: replace
+      path: /data/LOG_LEVEL
+      value: "WARNING"
+    - op: replace
+      path: /data/CORS_ORIGINS
+      value: "https://meuprojeto.dev,https://www.meuprojeto.dev,https://api.meuprojeto.dev"
+    - op: replace
+      path: /data/DB_POOL_SIZE
+      value: "50"
+    - op: replace
+      path: /data/DB_MAX_OVERFLOW
+      value: "100"
+
+- target:
+    kind: Ingress
+    name: fastapi-menu-api-ingress
+  patch: |-
+    - op: replace
+      path: /spec/rules/0/host
+      value: "api.meuprojeto.dev"
+    - op: replace
+      path: /spec/rules/1/host
+      value: "grafana.meuprojeto.dev"
+    - op: replace
+      path: /spec/rules/2/host
+      value: "prometheus.meuprojeto.dev"
+    - op: replace
+      path: /spec/tls/0/hosts
+      value: 
+        - "api.meuprojeto.dev"
+        - "grafana.meuprojeto.dev"
+        - "prometheus.meuprojeto.dev"
+
+- target:
+    kind: PersistentVolumeClaim
+    name: postgres-pvc
+  patch: |-
+    - op: replace
+      path: /spec/resources/requests/storage
+      value: "50Gi"
+
+- target:
+    kind: PersistentVolumeClaim
+    name: backup-pvc
+  patch: |-
+    - op: replace
+      path: /spec/resources/requests/storage
+      value: "100Gi"
+
+images:
+- name: fastapi-menu-api
+  newTag: latest

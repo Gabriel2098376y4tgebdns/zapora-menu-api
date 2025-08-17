@@ -1,0 +1,367 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: backup-scripts
+  namespace: fastapi-menu-api
+  labels:
+    app: postgres-backup
+    component: backup
+data:
+  backup.sh: |
+    #!/bin/bash
+    set -e
+    
+    # Configuration
+    BACKUP_DIR="/backup"
+    DATE=$(date +%Y%m%d_%H%M%S)
+    BACKUP_FILE="postgres_backup_${DATE}.sql"
+    BACKUP_PATH="${BACKUP_DIR}/${BACKUP_FILE}"
+    RETENTION_DAYS=${BACKUP_RETENTION_DAYS:-30}
+    
+    # Logging function
+    log() {
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1"
+    }
+    
+    # Create backup directory if not exists
+    mkdir -p ${BACKUP_DIR}
+    
+    log "Starting PostgreSQL backup..."
+    log "Backup file: ${BACKUP_PATH}"
+    
+    # Perform backup
+    pg_dump \
+        --host=postgres-service \
+        --port=5432 \
+        --username=${POSTGRES_USER} \
+        --dbname=${POSTGRES_DB} \
+        --verbose \
+        --clean \
+        --if-exists \
+        --create \
+        --format=custom \
+        --file=${BACKUP_PATH}
+    
+    if [ $? -eq 0 ]; then
+        log "Backup completed successfully"
+        
+        # Compress backup
+        gzip ${BACKUP_PATH}
+        BACKUP_PATH="${BACKUP_PATH}.gz"
+        
+        # Get backup size
+        BACKUP_SIZE=$(du -h ${BACKUP_PATH} | cut -f1)
+        log "Backup compressed. Size: ${BACKUP_SIZE}"
+        
+        # Create backup metadata
+        cat > ${BACKUP_DIR}/backup_${DATE}.json << EOF
+    {
+        "timestamp": "$(date -Iseconds)",
+        "filename": "$(basename ${BACKUP_PATH})",
+        "size": "${BACKUP_SIZE}",
+        "database": "${POSTGRES_DB}",
+        "status": "success",
+        "retention_date": "$(date -d '+${RETENTION_DAYS} days' -Iseconds)"
+    }
+    EOF
+        
+        log "Backup metadata created"
+        
+    else
+        log "ERROR: Backup failed!"
+        
+        # Create error metadata
+        cat > ${BACKUP_DIR}/backup_${DATE}.json << EOF
+    {
+        "timestamp": "$(date -Iseconds)",
+        "filename": "",
+        "size": "0",
+        "database": "${POSTGRES_DB}",
+        "status": "failed",
+        "error": "pg_dump command failed"
+    }
+    EOF
+        exit 1
+    fi
+    
+    # Cleanup old backups
+    log "Cleaning up backups older than ${RETENTION_DAYS} days..."
+    find ${BACKUP_DIR} -name "postgres_backup_*.sql.gz" -mtime +${RETENTION_DAYS} -delete
+    find ${BACKUP_DIR} -name "backup_*.json" -mtime +${RETENTION_DAYS} -delete
+    
+    # List remaining backups
+    BACKUP_COUNT=$(find ${BACKUP_DIR} -name "postgres_backup_*.sql.gz" | wc -l)
+    log "Cleanup completed. ${BACKUP_COUNT} backups remaining."
+    
+    log "Backup process completed successfully"
+
+  restore.sh: |
+    #!/bin/bash
+    set -e
+    
+    BACKUP_FILE=$1
+    BACKUP_DIR="/backup"
+    
+    # Logging function
+    log() {
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1"
+    }
+    
+    if [ -z "${BACKUP_FILE}" ]; then
+        log "ERROR: Please provide backup file name"
+        log "Usage: $0 <backup_file.sql.gz>"
+        log "Available backups:"
+        ls -la ${BACKUP_DIR}/postgres_backup_*.sql.gz 2>/dev/null || log "No backups found"
+        exit 1
+    fi
+    
+    BACKUP_PATH="${BACKUP_DIR}/${BACKUP_FILE}"
+    
+    if [ ! -f "${BACKUP_PATH}" ]; then
+        log "ERROR: Backup file not found: ${BACKUP_PATH}"
+        exit 1
+    fi
+    
+    log "Starting PostgreSQL restore..."
+    log "Backup file: ${BACKUP_PATH}"
+    
+    # Decompress if needed
+    if [[ "${BACKUP_FILE}" == *.gz ]]; then
+        DECOMPRESSED_FILE="${BACKUP_PATH%.gz}"
+        log "Decompressing backup..."
+        gunzip -c "${BACKUP_PATH}" > "${DECOMPRESSED_FILE}"
+        RESTORE_FILE="${DECOMPRESSED_FILE}"
+    else
+        RESTORE_FILE="${BACKUP_PATH}"
+    fi
+    
+    # Restore database
+    pg_restore \
+        --host=postgres-service \
+        --port=5432 \
+        --username=${POSTGRES_USER} \
+        --dbname=${POSTGRES_DB} \
+        --verbose \
+        --clean \
+        --if-exists \
+        "${RESTORE_FILE}"
+    
+    if [ $? -eq 0 ]; then
+        log "Restore completed successfully"
+        
+        # Cleanup decompressed file if it was created
+        if [[ "${BACKUP_FILE}" == *.gz ]]; then
+            rm -f "${RESTORE_FILE}"
+        fi
+    else
+        log "ERROR: Restore failed!"
+        exit 1
+    fi
+    
+    log "Restore process completed successfully"
+
+  list_backups.sh: |
+    #!/bin/bash
+    
+    BACKUP_DIR="/backup"
+    
+    echo "Available PostgreSQL Backups:"
+    echo "=============================="
+    
+    if [ ! -d "${BACKUP_DIR}" ]; then
+        echo "Backup directory not found: ${BACKUP_DIR}"
+        exit 1
+    fi
+    
+    # List backup files with metadata
+    for backup_file in ${BACKUP_DIR}/postgres_backup_*.sql.gz; do
+        if [ -f "${backup_file}" ]; then
+            filename=$(basename "${backup_file}")
+            size=$(du -h "${backup_file}" | cut -f1)
+            date_created=$(stat -c %y "${backup_file}" | cut -d' ' -f1,2 | cut -d'.' -f1)
+            
+            # Try to find corresponding metadata
+            metadata_file="${BACKUP_DIR}/backup_${filename#postgres_backup_}.json"
+            metadata_file="${metadata_file%.sql.gz.json}.json"
+            
+            echo "File: ${filename}"
+            echo "Size: ${size}"
+            echo "Created: ${date_created}"
+            
+            if [ -f "${metadata_file}" ]; then
+                status=$(jq -r '.status' "${metadata_file}" 2>/dev/null || echo "unknown")
+                echo "Status: ${status}"
+            fi
+            
+            echo "---"
+        fi
+    done
+    
+    backup_count=$(find ${BACKUP_DIR} -name "postgres_backup_*.sql.gz" | wc -l)
+    echo "Total backups: ${backup_count}"
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: backup-pvc
+  namespace: fastapi-menu-api
+  labels:
+    app: postgres-backup
+    component: backup
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 20Gi  # Adjust based on your backup needs
+  storageClassName: "standard"
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: postgres-backup
+  namespace: fastapi-menu-api
+  labels:
+    app: postgres-backup
+    component: backup
+spec:
+  schedule: "0 2 * * *"  # Daily at 2 AM
+  timeZone: "UTC"
+  successfulJobsHistoryLimit: 7
+  failedJobsHistoryLimit: 3
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      backoffLimit: 3
+      template:
+        metadata:
+          labels:
+            app: postgres-backup
+            component: backup
+        spec:
+          restartPolicy: OnFailure
+          containers:
+          - name: postgres-backup
+            image: postgres:15-alpine
+            command:
+            - /bin/sh
+            - /scripts/backup.sh
+            env:
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-secret
+                  key: POSTGRES_USER
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-secret
+                  key: POSTGRES_PASSWORD
+            - name: POSTGRES_DB
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-secret
+                  key: POSTGRES_DB
+            - name: BACKUP_RETENTION_DAYS
+              valueFrom:
+                configMapKeyRef:
+                  name: app-config
+                  key: BACKUP_RETENTION_DAYS
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-secret
+                  key: POSTGRES_PASSWORD
+            volumeMounts:
+            - name: backup-storage
+              mountPath: /backup
+            - name: backup-scripts
+              mountPath: /scripts
+            resources:
+              requests:
+                memory: "128Mi"
+                cpu: "100m"
+              limits:
+                memory: "256Mi"
+                cpu: "200m"
+          volumes:
+          - name: backup-storage
+            persistentVolumeClaim:
+              claimName: backup-pvc
+          - name: backup-scripts
+            configMap:
+              name: backup-scripts
+              defaultMode: 0755
+---
+# Manual backup job template
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: postgres-backup-manual
+  namespace: fastapi-menu-api
+  labels:
+    app: postgres-backup
+    component: backup
+    type: manual
+spec:
+  backoffLimit: 3
+  template:
+    metadata:
+      labels:
+        app: postgres-backup
+        component: backup
+        type: manual
+    spec:
+      restartPolicy: OnFailure
+      containers:
+      - name: postgres-backup
+        image: postgres:15-alpine
+        command:
+        - /bin/sh
+        - /scripts/backup.sh
+        env:
+        - name: POSTGRES_USER
+          valueFrom:
+            secretKeyRef:
+              name: postgres-secret
+              key: POSTGRES_USER
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: postgres-secret
+              key: POSTGRES_PASSWORD
+        - name: POSTGRES_DB
+          valueFrom:
+            secretKeyRef:
+              name: postgres-secret
+              key: POSTGRES_DB
+        - name: BACKUP_RETENTION_DAYS
+          valueFrom:
+            configMapKeyRef:
+              name: app-config
+              key: BACKUP_RETENTION_DAYS
+        - name: PGPASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: postgres-secret
+              key: POSTGRES_PASSWORD
+        volumeMounts:
+        - name: backup-storage
+          mountPath: /backup
+        - name: backup-scripts
+          mountPath: /scripts
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "200m"
+      volumes:
+      - name: backup-storage
+        persistentVolumeClaim:
+          claimName: backup-pvc
+      - name: backup-scripts
+        configMap:
+          name: backup-scripts
+          defaultMode: 0755

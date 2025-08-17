@@ -1,0 +1,276 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  PYTHON_VERSION: '3.11'
+
+jobs:
+  # =================== QUALITY CHECKS ===================
+  quality:
+    name: Code Quality Checks
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+        cache: 'pip'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -e ".[dev]"
+    
+    - name: Code formatting with Black
+      run: |
+        echo "🎨 Checking code formatting with Black..."
+        black --check --diff .
+    
+    - name: Linting with Flake8
+      run: |
+        echo "🔍 Running Flake8 linting..."
+        flake8 my_menu_api tests
+    
+    - name: Type checking with mypy
+      run: |
+        echo "🔒 Running mypy type checking..."
+        mypy my_menu_api
+    
+    - name: Security check with bandit
+      run: |
+        echo "🛡️ Running security checks..."
+        pip install bandit[toml]
+        bandit -r my_menu_api -f json -o bandit-report.json || true
+        bandit -r my_menu_api
+    
+    - name: Upload bandit results
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: bandit-report
+        path: bandit-report.json
+
+  # =================== TESTS ===================
+  test:
+    name: Run Tests
+    runs-on: ubuntu-latest
+    needs: quality
+    
+    strategy:
+      matrix:
+        python-version: ['3.11', '3.12']
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+        cache: 'pip'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -e ".[dev]"
+    
+    - name: Run unit tests
+      run: |
+        echo "🧪 Running unit tests..."
+        pytest tests/unit/ -v --cov=my_menu_api --cov-report=xml --cov-report=html --cov-report=term-missing
+    
+    - name: Run integration tests
+      run: |
+        echo "🔗 Running integration tests..."
+        pytest tests/integration/ -v --cov=my_menu_api --cov-append --cov-report=xml --cov-report=html --cov-report=term-missing
+    
+    - name: Generate coverage report
+      run: |
+        echo "📊 Generating coverage report..."
+        coverage report --show-missing
+        coverage html
+    
+    - name: Upload coverage reports to Codecov
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./coverage.xml
+        flags: unittests
+        name: codecov-umbrella
+        fail_ci_if_error: false
+    
+    - name: Upload coverage HTML report
+      uses: actions/upload-artifact@v3
+      with:
+        name: coverage-report-${{ matrix.python-version }}
+        path: htmlcov/
+    
+    - name: Coverage comment
+      if: github.event_name == 'pull_request' && matrix.python-version == '3.11'
+      uses: py-cov-action/python-coverage-comment-action@v3
+      with:
+        GITHUB_TOKEN: ${{ github.token }}
+
+  # =================== DEPENDENCY CHECKS ===================
+  dependency-check:
+    name: Dependency Security Check
+    runs-on: ubuntu-latest
+    needs: quality
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install safety pip-audit
+    
+    - name: Run safety check
+      run: |
+        echo "🔐 Checking for known security vulnerabilities..."
+        safety check --json --output safety-report.json || true
+        safety check
+    
+    - name: Run pip-audit
+      run: |
+        echo "🔍 Running pip-audit..."
+        pip-audit --format=json --output=pip-audit-report.json || true
+        pip-audit
+    
+    - name: Upload security reports
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: security-reports
+        path: |
+          safety-report.json
+          pip-audit-report.json
+
+  # =================== BUILD AND VALIDATION ===================
+  build:
+    name: Build and Validate
+    runs-on: ubuntu-latest
+    needs: [quality, test]
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+    
+    - name: Install build dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install build twine
+    
+    - name: Build package
+      run: |
+        echo "📦 Building package..."
+        python -m build
+    
+    - name: Check package
+      run: |
+        echo "✅ Validating package..."
+        twine check dist/*
+    
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: dist
+        path: dist/
+
+  # =================== DEPLOYMENT (if on main branch) ===================
+  deploy-staging:
+    name: Deploy to Staging
+    runs-on: ubuntu-latest
+    needs: [build]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    environment: staging
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Deploy to staging
+      run: |
+        echo "🚀 Deploying to staging environment..."
+        # Add your deployment commands here
+        # Example: docker build and push, AWS deployment, etc.
+    
+    - name: Run smoke tests
+      run: |
+        echo "💨 Running smoke tests on staging..."
+        # Add smoke tests for deployed application
+        
+    - name: Notify deployment
+      run: |
+        echo "✅ Staging deployment completed successfully!"
+
+  # =================== PERFORMANCE TESTS ===================
+  performance:
+    name: Performance Tests
+    runs-on: ubuntu-latest
+    needs: [test]
+    if: github.event_name == 'pull_request'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -e ".[dev]"
+        pip install locust
+    
+    - name: Run performance tests
+      run: |
+        echo "🏎️ Running performance tests..."
+        # Example: locust --headless --users 10 --spawn-rate 1 -H http://localhost:8000 -t 30s
+        # Add your performance testing commands here
+    
+    - name: Performance report
+      run: |
+        echo "📈 Performance test completed"
+
+# =================== NOTIFICATIONS ===================
+  notify:
+    name: Notify Results
+    runs-on: ubuntu-latest
+    needs: [quality, test, dependency-check, build]
+    if: always()
+    
+    steps:
+    - name: Notify success
+      if: ${{ needs.quality.result == 'success' && needs.test.result == 'success' }}
+      run: |
+        echo "✅ All checks passed! Ready for merge."
+    
+    - name: Notify failure
+      if: ${{ needs.quality.result == 'failure' || needs.test.result == 'failure' }}
+      run: |
+        echo "❌ Some checks failed. Please review the results."
+        exit 1
